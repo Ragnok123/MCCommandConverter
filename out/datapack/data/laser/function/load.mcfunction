@@ -1,0 +1,4 @@
+scoreboard objectives add laser_fin_charge dummy
+scoreboard objectives add laser_bolt_age dummy
+scoreboard objectives add laser_cannon_fire_state dummy
+scoreboard objectives add laser_cannon_fire_t dummy
