@@ -3,30 +3,35 @@ package ru.ragnok123.MCCommandConverter;
 import java.nio.file.*;
 import java.util.*;
 
+import ru.ragnok123.MCCommandConverter.examples.Showcase;
 import ru.ragnok123.MCCommandConverter.examples.SpaceLaser;
 import ru.ragnok123.MCCommandConverter.ir.Ir.*;
+import ru.ragnok123.MCCommandConverter.ir.IrPrinter;
 
+/** Usage: Main [outDir] [targetVersion] [--dump-ir] */
 public final class Main {
     public static void main(String[] args) throws Exception {
-        Path out = Path.of(args.length > 0 ? args[0] : "out");
-        Program ir = SpaceLaser.build();
-        Program lowered = Lowerer.run(ir);
+        List<String> a = new ArrayList<>(List.of(args));
+        boolean dump = a.remove("--dump-ir");
+        Path out = Path.of(a.size() > 0 ? a.get(0) : "out");
+        TargetVersion ver = a.size() > 1 ? TargetVersion.byName(a.get(1)) : TargetVersion.LATEST;
+        build(out.resolve("laser"), SpaceLaser.build(), ver, dump);
+    }
 
-        // target 1: datapack
-        JavaBackend dp = new JavaBackend("laser", false);
-        List<String> tick = dp.compile(lowered);
-        Emit.datapack(out.resolve("datapack"), "laser", tick, dp);
+    static void build(Path out, Program ir, TargetVersion ver, boolean dump) throws Exception {
+        Program lowered = Compiler.lower(ir);
+        if (dump) System.out.println(IrPrinter.dump(lowered));
 
-        // target 2: single-paste command-block installer (no function calls, prefixes repeated)
-        JavaBackend cb = new JavaBackend("laser", true);
-        List<String> flat = cb.compile(lowered);
-        Files.createDirectories(out);
-        Files.writeString(out.resolve("installer.txt"), Emit.installer(new ArrayList<>(cb.objectives), flat) + "\n");
-        Files.writeString(out.resolve("flat_commands.txt"), String.join("\n", flat) + "\n");
+        JavaBackend dp = new JavaBackend(ir.ns(), false, ver);
+        JavaBackend.Result dr = dp.compile(lowered);
+        Emit.datapack(out.resolve("datapack"), ir.ns(), dp, dr, ver);
 
-        System.out.println("IR statements (before lowering): " + ir.tick().size());
-        System.out.println("IR statements (after lowering):  " + lowered.tick().size());
-        System.out.println("datapack: tick=" + tick.size() + " lines + " + dp.functions.size() + " generated functions");
-        System.out.println("command-block chain: " + flat.size() + " commands");
+        JavaBackend cb = new JavaBackend(ir.ns(), true, ver);
+        JavaBackend.Result cr = cb.compile(lowered);
+        Emit.commandBlocks(out.resolve("commandblocks"), cb, cr, Emit.Layout.SNAKE);
+
+        System.out.println("[" + ir.ns() + "] IR statements: " + ir.tick().size() + " -> " + lowered.tick().size() + " after lowering");
+        System.out.println("[" + ir.ns() + "] datapack: tick=" + dr.tick().size() + " lines + " + dp.functions.size() + " functions");
+        System.out.println("[" + ir.ns() + "] command-block chain: " + cr.tick().size() + " commands");
     }
 }
